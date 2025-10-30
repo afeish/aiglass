@@ -1,12 +1,27 @@
 @echo off
-REM AI Glass System - Windows 快速安装脚本
+REM AI Glass System - Windows 快速安装脚本 (uv-managed)
 
 echo ==========================================
-echo   AI Glass System - 自动安装脚本
+echo   AI Glass System - 自动安装脚本 (uv-managed)
 echo ==========================================
 echo.
 
+REM 检查 uv
+echo 正在检查 uv...
+uv --version >nul 2>&1
+if errorlevel 1 (
+    echo [警告] uv 未找到，正在安装...
+    powershell -Command "Invoke-WebRequest -UseBasicParsing -Uri https://astral.sh/uv/install.ps1 | Invoke-Expression"
+    echo [提示] 请重启终端以使 uv 可用，然后重新运行此脚本
+    pause
+    exit /b 1
+)
+
+for /f "tokens=*" %%i in ('uv --version') do set UV_VERSION=%%i
+echo [成功] 找到 %UV_VERSION%
+
 REM 检查 Python
+echo.
 echo 正在检查 Python...
 python --version >nul 2>&1
 if errorlevel 1 (
@@ -28,48 +43,34 @@ if errorlevel 1 (
     set HAS_GPU=0
 ) else (
     echo [成功] 检测到 NVIDIA GPU
-    nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader
+    nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader,nounits
     set HAS_GPU=1
 )
 
-REM 创建虚拟环境
+REM 检查 pyproject.toml
 echo.
-echo 正在创建虚拟环境...
-if exist venv (
-    echo [警告] 虚拟环境已存在
-    set /p RECREATE="是否删除并重新创建? (y/n): "
-    if /i "%RECREATE%"=="y" (
-        rmdir /s /q venv
-        python -m venv venv
-        echo [成功] 虚拟环境已重新创建
-    )
-) else (
-    python -m venv venv
-    echo [成功] 虚拟环境已创建
+echo 正在检查项目配置...
+if not exist pyproject.toml (
+    echo [错误] pyproject.toml 未找到
+    echo 请确保在项目根目录中运行此脚本
+    pause
+    exit /b 1
 )
 
-REM 激活虚拟环境
+REM 安装 uv 项目依赖
 echo.
-echo 正在激活虚拟环境...
-call venv\Scripts\activate.bat
-
-REM 升级 pip
-echo.
-echo 正在升级 pip...
-python -m pip install --upgrade pip -q
-echo [成功] pip 已升级
-
-REM 安装 PyTorch
-echo.
-echo 正在安装 PyTorch...
+echo 正在使用 uv 安装依赖...
 if %HAS_GPU%==1 (
-    echo 安装 GPU 版本 PyTorch ^(CUDA 11.8^)...
-    pip install torch==2.0.1+cu118 torchvision==0.15.2+cu118 --index-url https://download.pytorch.org/whl/cu118 -q
+    echo 检测到 GPU，使用 PyTorch CUDA 版本...
+    uv pip install torch==2.0.1+cu118 torchvision==0.15.2+cu118 --index-url https://download.pytorch.org/whl/cu118
 ) else (
-    echo 安装 CPU 版本 PyTorch...
-    pip install torch torchvision -q
+    echo 使用 CPU 版本 PyTorch...
+    uv pip install torch torchvision
 )
-echo [成功] PyTorch 已安装
+
+REM 安装项目依赖
+uv sync
+echo [成功] 项目依赖已安装
 
 REM 验证 PyTorch
 echo.
@@ -83,18 +84,12 @@ echo [警告] PyAudio 在 Windows 上可能需要手动安装
 echo 如果自动安装失败，请从以下地址下载 wheel 文件:
 echo https://www.lfd.uci.edu/~gohlke/pythonlibs/#pyaudio
 echo.
-pip install pyaudio -q
+uv pip install pyaudio
 if errorlevel 1 (
     echo [警告] PyAudio 自动安装失败，请手动安装
 ) else (
     echo [成功] PyAudio 已安装
 )
-
-REM 安装其他依赖
-echo.
-echo 正在安装 Python 依赖...
-pip install -r requirements.txt -q
-echo [成功] Python 依赖已安装
 
 REM 创建 .env 文件
 echo.
@@ -143,14 +138,22 @@ echo    notepad .env
 echo.
 echo 2. 确保所有模型文件已放入 model\ 目录
 echo.
-echo 3. 启动系统:
-echo    venv\Scripts\activate
+echo 3. 启动系统 ^(uv managed^):
+echo    uv run python app_main.py
+echo.
+echo 4. 或在 uv 环境中启动开发模式:
+echo    uv venv  ^(创建虚拟环境^)
+echo    uv run bash  ^(启动 uv 管理的 shell^)
 echo    python app_main.py
 echo.
-echo 4. 访问 http://localhost:8081
+echo 5. 访问 http://localhost:8081
 echo.
-echo [提示] 每次使用前请激活虚拟环境:
-echo   venv\Scripts\activate
+echo uv 常用命令:
+echo   uv run python app_main.py  ^(直接运行应用^)
+echo   uv venv                    ^(创建虚拟环境^)
+echo   uv sync                    ^(同步依赖^)
+echo   uv add ^<package^>          ^(添加依赖^)
+echo   uv remove ^<package^>       ^(移除依赖^)
 echo.
 
 pause

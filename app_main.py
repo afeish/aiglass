@@ -17,6 +17,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.websockets import WebSocketState
+from contextlib import asynccontextmanager
 import uvicorn
 import cv2
 import numpy as np
@@ -84,7 +85,86 @@ import atexit
 UDP_IP   = "0.0.0.0"
 UDP_PORT = 12345
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    # 1. Register bridge sender
+    main_loop = asyncio.get_event_loop()
+    
+    def _sender(jpeg_bytes: bytes):
+        # 注意：这个函数可能在非协程线程里被调用，需要切回主事件循环
+        try:
+            # 检查事件循环状态，避免在关闭时发送
+            if main_loop.is_closed():
+                return
+            
+            # 标记YOLO已经开始发送处理后的帧
+            global yolomedia_sending_frames
+            if not yolomedia_sending_frames:
+                yolomedia_sending_frames = True
+                print("[YOLOMEDIA] 开始发送处理后的帧，切换到YOLO画面", flush=True)
+            
+            async def _broadcast():
+                if not camera_viewers:
+                    return
+                dead = []
+                for ws in list(camera_viewers):
+                    try:
+                        await ws.send_bytes(jpeg_bytes)
+                    except Exception as e:
+                        dead.append(ws)
+                for ws in dead:
+                    try:
+                        camera_viewers.remove(ws)
+                    except Exception:
+                        pass
+            
+            # 使用保存的主线程事件循环
+            future = asyncio.run_coroutine_threadsafe(_broadcast(), main_loop)
+            # 不等待结果，避免阻塞生产线程
+        except Exception as e:
+            # 只在非预期错误时打印日志
+            if "Event loop is closed" not in str(e):
+                print(f"[DEBUG] _sender error: {e}", flush=True)
+
+    bridge_io.set_sender(_sender)
+    
+    # 2. Initialize audio system
+    def _init():
+        try:
+            initialize_audio_system()
+        except Exception as e:
+            print(f"[AUDIO] 初始化失败: {e}")
+    
+    threading.Thread(target=_init, daemon=True).start()
+    
+    # 3. Setup UDP endpoint
+    try:
+        loop = asyncio.get_running_loop()
+        await loop.create_datagram_endpoint(lambda: UDPProto(), local_addr=(UDP_IP, UDP_PORT))
+    except OSError as e:
+        if e.errno == 48:  # Address already in use
+            print(f"[UDP] 端口 {UDP_IP}:{UDP_PORT} 已被占用，跳过 UDP 服务启动")
+        else:
+            print(f"[UDP] UDP 服务启动失败: {e}")
+    except Exception as e:
+        print(f"[UDP] UDP 服务启动出错: {e}")
+    
+    yield  # App runs here
+    
+    # Shutdown
+    print("[SHUTDOWN] 开始清理资源...")
+    
+    # 停止YOLO媒体处理
+    stop_yolomedia()
+    
+    # 停止音频和AI任务
+    await hard_reset_audio("shutdown")
+    
+    print("[SHUTDOWN] 资源清理完成")
+
+
+app = FastAPI(lifespan=lifespan)
 
 # ====== 状态与容器 ======
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -121,7 +201,7 @@ def load_navigation_models():
     global yolo_seg_model, obstacle_detector
 
     try:
-        seg_model_path = os.getenv("BLIND_PATH_MODEL", r"C:\Users\Administrator\Desktop\rebuild1002\model\yolo-seg.pt")
+        seg_model_path = os.getenv("BLIND_PATH_MODEL", r"model/yolo11m-seg.pt")
         #print(f"[NAVIGATION] 尝试加载模型: {seg_model_path}")
 
         if os.path.exists(seg_model_path):
@@ -154,7 +234,7 @@ def load_navigation_models():
             print(f"[NAVIGATION] 请检查文件路径是否正确")
             
         # 【修改开始】使用 ObstacleDetectorClient 替代直接的 YOLO
-        obstacle_model_path = os.getenv("OBSTACLE_MODEL", r"C:\Users\Administrator\Desktop\rebuild1002\model\yoloe-11l-seg.pt")
+        obstacle_model_path = os.getenv("OBSTACLE_MODEL", r"model/yoloe-11l-seg.pt")
         print(f"[NAVIGATION] 尝试加载障碍物检测模型: {obstacle_model_path}")
         
         if os.path.exists(obstacle_model_path):
@@ -1227,83 +1307,6 @@ class UDPProto(asyncio.DatagramProtocol):
 
 
 
-# === 新增：注册给 bridge_io 的发送回调（把 JPEG 广播给 /ws/viewer） ===
-@app.on_event("startup")
-async def on_startup_register_bridge_sender():
-    # 保存主线程的事件循环
-    main_loop = asyncio.get_event_loop()
-    
-    def _sender(jpeg_bytes: bytes):
-        # 注意：这个函数可能在非协程线程里被调用，需要切回主事件循环
-        try:
-            # 检查事件循环状态，避免在关闭时发送
-            if main_loop.is_closed():
-                return
-            
-            # 标记YOLO已经开始发送处理后的帧
-            global yolomedia_sending_frames
-            if not yolomedia_sending_frames:
-                yolomedia_sending_frames = True
-                print("[YOLOMEDIA] 开始发送处理后的帧，切换到YOLO画面", flush=True)
-            
-            async def _broadcast():
-                if not camera_viewers:
-                    return
-                dead = []
-                for ws in list(camera_viewers):
-                    try:
-                        await ws.send_bytes(jpeg_bytes)
-                    except Exception as e:
-                        dead.append(ws)
-                for ws in dead:
-                    try:
-                        camera_viewers.remove(ws)
-                    except Exception:
-                        pass
-            
-            # 使用保存的主线程事件循环
-            future = asyncio.run_coroutine_threadsafe(_broadcast(), main_loop)
-            # 不等待结果，避免阻塞生产线程
-        except Exception as e:
-            # 只在非预期错误时打印日志
-            if "Event loop is closed" not in str(e):
-                print(f"[DEBUG] _sender error: {e}", flush=True)
-
-    bridge_io.set_sender(_sender)
-
-@app.on_event("startup")
-async def on_startup_init_audio():
-    """启动时初始化音频系统"""
-    # 在后台线程中初始化，避免阻塞启动
-    def _init():
-        try:
-            initialize_audio_system()
-        except Exception as e:
-            print(f"[AUDIO] 初始化失败: {e}")
-    
-    threading.Thread(target=_init, daemon=True).start()
-
-@app.on_event("startup")
-async def on_startup():
-    loop = asyncio.get_running_loop()
-    await loop.create_datagram_endpoint(lambda: UDPProto(), local_addr=(UDP_IP, UDP_PORT))
-
-@app.on_event("shutdown")
-async def on_shutdown():
-    """应用关闭时的清理工作"""
-    print("[SHUTDOWN] 开始清理资源...")
-    
-    # 停止YOLO媒体处理
-    stop_yolomedia()
-    
-    # 停止音频和AI任务
-    await hard_reset_audio("shutdown")
-    
-    print("[SHUTDOWN] 资源清理完成")
-
-# app_main.py —— 在文件里已有的 @app.on_event("startup") 之后，再加一个新的 startup 钩子
-
-
 # --- 导出接口（可选） ---
 def get_last_frames():
     return last_frames
@@ -1311,9 +1314,13 @@ def get_last_frames():
 def get_camera_ws():
     return esp32_camera_ws
 
-if __name__ == "__main__":
+def main():
+    """Main entry point for the AI Glass System."""
     uvicorn.run(
         app, host="0.0.0.0", port=8081,
         log_level="warning", access_log=False,
         loop="asyncio", workers=1, reload=False
     )
+
+if __name__ == "__main__":
+    main()

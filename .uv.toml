@@ -1,0 +1,17 @@
+# uv configuration for AI Glass System
+
+# Source distribution settings
+[build]
+# Whether to build source distributions
+# sdist = true
+
+# Whether to build wheels
+# wheel = true
+
+# Additional compilation settings
+# rustc-args = ["..."]
+
+# Install settings
+[install]
+# Whether to install optional dependencies (extras)
+# dev = true

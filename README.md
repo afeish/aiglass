@@ -98,10 +98,48 @@
 
 ```bash
 git clone https://github.com/yourusername/aiglass.git
-cd aiglass/rebuild1002
+cd aiglass
 ```
 
-### 2. 安装依赖
+### 2. 使用 uv 安装依赖（推荐）
+
+#### 安装 uv
+```bash
+# Linux/macOS
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows (PowerShell)
+powershell -Command "Invoke-WebRequest -UseBasicParsing -Uri https://astral.sh/uv/install.ps1 | Invoke-Expression"
+```
+
+#### 安装项目依赖
+```bash
+# 同步项目依赖 (相当于 pip install -r requirements.txt)
+uv sync
+
+# 如果需要 GPU 支持，先安装 CUDA 版 PyTorch
+uv pip install torch==2.0.1+cu118 torchvision==0.15.2+cu118 --index-url https://download.pytorch.org/whl/cu118
+
+# 重新同步其他依赖
+uv sync
+```
+
+#### 启动系统
+```bash
+# 直接运行应用（推荐）
+uv run python app_main.py
+
+# 或者使用 uv 管理的虚拟环境（包含音频功能）
+uv venv
+source .venv/bin/activate  # Linux/macOS
+# .venv\Scripts\activate   # Windows
+
+# 如果需要音频功能 (PyAudio)
+uv sync --extra audio
+python app_main.py
+```
+
+### 3. 或使用传统方式安装依赖
 
 #### 创建虚拟环境（推荐）
 ```bash
@@ -120,19 +158,19 @@ pip install -r requirements.txt
 #### 安装 CUDA 和 cuDNN（GPU 加速）
 请参考 [NVIDIA CUDA Toolkit 安装指南](https://developer.nvidia.com/cuda-downloads)
 
-### 3. 下载模型文件
+### 4. 下载模型文件
 
 将以下模型文件放入 `model/` 目录：
 
 | 模型文件 | 用途 | 大小 | 下载链接 |
 |---------|------|------|---------|
-| `yolo-seg.pt` | 盲道分割 | ~50MB | [待补充] |
-| `yoloe-11l-seg.pt` | 开放词汇检测 | ~80MB | [待补充] |
-| `shoppingbest5.pt` | 物品识别 | ~30MB | [待补充] |
-| `trafficlight.pt` | 红绿灯检测 | ~20MB | [待补充] |
+| `yolo-seg.pt` | 盲道分割 | ~50MB | [待补充](https://huggingface.co/Ultralytics/YOLO11/resolve/main/yolo11l-seg.pt?download=true) |
+| `yoloe-11l-seg.pt` | 开放词汇检测 | ~80MB | [待补充]( https://huggingface.co/jameslahm/yoloe/resolve/main/yoloe-11l-seg.pt?download=true) |
+| `shoppingbest5.pt` | 物品识别 | ~30MB | [待补充]() |
+| `trafficlight.pt` | 红绿灯检测 | ~20MB | [待补充](https://huggingface.co/ojaskandy/traffic-light-detection-yolo/resolve/main/best_traffic_small_yolo.pt?download=true) |
 | `hand_landmarker.task` | 手部检测 | ~15MB | [MediaPipe Models](https://developers.google.com/mediapipe/solutions/vision/hand_landmarker#models) |
 
-### 4. 配置 API 密钥
+### 5. 配置 API 密钥
 
 创建 `.env` 文件：
 
@@ -147,20 +185,30 @@ DASHSCOPE_API_KEY=your_api_key_here
 API_KEY = "your_api_key_here"
 ```
 
-### 5. 启动系统
+### 6. 启动系统
 
+#### 使用 uv (推荐)
+```bash
+uv run python app_main.py
+```
+
+#### 使用传统虚拟环境
 ```bash
 python app_main.py
 ```
 
 系统将在 `http://0.0.0.0:8081` 启动，打开浏览器访问即可看到实时监控界面。
 
-### 6. 连接设备（可选）
+### 7. 连接设备（可选）
 
 如果使用 ESP32-CAM，请：
 1. 烧录 `compile/compile.ino` 到 ESP32
 2. 修改 WiFi 配置，连接到同一网络
 3. ESP32 自动连接到 WebSocket 端点
+
+### 8. uv 管理指南
+
+更多关于使用 uv 管理项目的详细信息，请参阅 [README-uv.md](README-uv.md)。
 
 ## 🏗️ 系统架构
 

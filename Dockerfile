@@ -1,4 +1,4 @@
-# AI Glass System - Dockerfile
+# AI Glass System - Dockerfile (uv-managed)
 # 基于 NVIDIA CUDA 的 Python 镜像
 
 FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
@@ -31,29 +31,39 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# 升级 pip
-RUN python3 -m pip install --upgrade pip
+# 安装 uv
+RUN pip install --upgrade pip
+RUN pip install uv
 
-# 复制 requirements.txt
-COPY requirements.txt .
+# 复制 project files
+COPY pyproject.toml uv.lock .python-version ./
 
-# 安装 Python 依赖
-RUN pip install torch==2.0.1+cu118 torchvision==0.15.2+cu118 --index-url https://download.pytorch.org/whl/cu118
-RUN pip install --no-cache-dir -r requirements.txt
+# Install torch with CUDA support first
+RUN uv pip install torch==2.0.1+cu118 torchvision==0.15.2+cu118 --index-url https://download.pytorch.org/whl/cu118
 
-# 复制应用代码
+# Install project dependencies using uv
+# Install without audio dependencies initially due to compilation issues
+RUN uv sync --no-dev
+
+# Install PyAudio separately with pre-compiled wheels to avoid compilation
+RUN pip install --no-cache-dir --force-reinstall pyaudio
+
+# Re-sync to ensure consistency
+RUN uv sync --no-dev
+
+# Copy application code
 COPY . .
 
-# 创建必要的目录
+# Create necessary directories
 RUN mkdir -p recordings model music voice static templates
 
-# 暴露端口
+# Expose ports
 EXPOSE 8081 12345/udp
 
-# 健康检查
+# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8081/api/health || exit 1
 
-# 启动命令
-CMD ["python3", "app_main.py"]
+# Start command
+CMD ["sh", "-c", "uv run python app_main.py"]
 

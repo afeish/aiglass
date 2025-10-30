@@ -1,10 +1,10 @@
 #!/bin/bash
-# AI Glass System - Linux/macOS 快速安装脚本
+# AI Glass System - Linux/macOS 快速安装脚本 (uv-managed)
 
 set -e  # 遇到错误立即退出
 
 echo "=========================================="
-echo "  AI Glass System - 自动安装脚本"
+echo "  AI Glass System - 自动安装脚本 (uv-managed)"
 echo "=========================================="
 echo ""
 
@@ -13,6 +13,17 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
+
+# 检查 uv
+echo "正在检查 uv..."
+if ! command -v uv &> /dev/null; then
+    echo -e "${YELLOW}uv 未找到，正在安装...${NC}"
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    export PATH="$HOME/.cargo/bin:$PATH"
+fi
+
+UV_VERSION=$(uv --version)
+echo -e "${GREEN}✓ 找到 $UV_VERSION${NC}"
 
 # 检查 Python 版本
 echo "正在检查 Python 版本..."
@@ -51,44 +62,29 @@ else
     HAS_GPU=false
 fi
 
-# 创建虚拟环境
+# 初始化项目
 echo ""
-echo "正在创建虚拟环境..."
-if [ -d "venv" ]; then
-    echo -e "${YELLOW}虚拟环境已存在${NC}"
-    read -p "是否删除并重新创建? (y/n) " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        rm -rf venv
-        python3 -m venv venv
-        echo -e "${GREEN}✓ 虚拟环境已重新创建${NC}"
-    fi
-else
-    python3 -m venv venv
-    echo -e "${GREEN}✓ 虚拟环境已创建${NC}"
+echo "正在初始化项目..."
+if [ ! -f "pyproject.toml" ]; then
+    echo -e "${RED}错误: pyproject.toml 未找到${NC}"
+    echo "请确保在项目根目录中运行此脚本"
+    exit 1
 fi
 
-# 激活虚拟环境
-echo "正在激活虚拟环境..."
-source venv/bin/activate
-
-# 升级 pip
-echo ""
-echo "正在升级 pip..."
-pip install --upgrade pip -q
-echo -e "${GREEN}✓ pip 已升级${NC}"
-
-# 安装 PyTorch
-echo ""
-echo "正在安装 PyTorch..."
+# 安装 uv 项目依赖
+echo "正在使用 uv 安装依赖..."
 if [ "$HAS_GPU" = true ]; then
-    echo "安装 GPU 版本 PyTorch (CUDA 11.8)..."
-    pip install torch==2.0.1+cu118 torchvision==0.15.2+cu118 --index-url https://download.pytorch.org/whl/cu118 -q
+    echo "检测到 GPU，使用 PyTorch CUDA 版本..."
+    # uv requires setting PyTorch index URL for CUDA packages
+    uv pip install torch==2.0.1+cu118 torchvision==0.15.2+cu118 --index-url https://download.pytorch.org/whl/cu118
 else
-    echo "安装 CPU 版本 PyTorch..."
-    pip install torch torchvision -q
+    echo "使用 CPU 版本 PyTorch..."
+    uv pip install torch torchvision
 fi
-echo -e "${GREEN}✓ PyTorch 已安装${NC}"
+
+# 安装项目依赖
+uv sync
+echo -e "${GREEN}✓ 项目依赖已安装${NC}"
 
 # 验证 PyTorch
 echo "验证 PyTorch 安装..."
@@ -118,12 +114,6 @@ if [[ "$OSTYPE" == "linux-gnu"* ]]; then
         echo "  需要: portaudio19-dev, libgl1-mesa-glx, libglib2.0-0"
     fi
 fi
-
-# 安装 Python 依赖
-echo ""
-echo "正在安装 Python 依赖..."
-pip install -r requirements.txt -q
-echo -e "${GREEN}✓ Python 依赖已安装${NC}"
 
 # 创建 .env 文件
 echo ""
@@ -178,15 +168,23 @@ echo "   nano .env"
 echo ""
 echo "2. 确保所有模型文件已放入 model/ 目录"
 echo ""
-echo "3. 启动系统:"
-echo "   source venv/bin/activate"
+echo "3. 启动系统 (uv managed):"
+echo "   uv run python app_main.py"
+echo ""
+echo "4. 或在 uv 环境中启动开发模式:"
+echo "   uv venv  # 创建虚拟环境"
+echo "   source .venv/bin/activate  # 或 uv run bash"
 echo "   python app_main.py"
 echo ""
-echo "4. 访问 http://localhost:8081"
+echo "5. 访问 http://localhost:8081"
 echo ""
 
-# 提示激活虚拟环境
-echo -e "${YELLOW}注意: 每次使用前请激活虚拟环境:${NC}"
-echo "  source venv/bin/activate"
+# 提示 uv 命令
+echo -e "${YELLOW}uv 常用命令:${NC}"
+echo "  uv run python app_main.py  # 直接运行应用"
+echo "  uv venv                    # 创建虚拟环境"
+echo "  uv sync                    # 同步依赖"
+echo "  uv add <package>           # 添加依赖"
+echo "  uv remove <package>        # 移除依赖"
 echo ""
 
