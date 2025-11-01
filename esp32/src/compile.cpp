@@ -1,6 +1,7 @@
-// ===== all_in_one_merged.ino — XIAO ESP32S3 Sense: Camera + Mic (PDM) + IMU (ICM42688 SPI) =====
+// ===== all_in_one_merged.cpp — XIAO ESP32S3 Sense: Camera + Mic (PDM) + IMU (ICM42688 SPI) =====
 // ===== 版本: v2.4-SPIIMU - ICM42688 改为 SPI，避开 I2S 干扰；WAV chunked 播放保持 =====
 
+#include <Arduino.h>
 #include <WiFi.h>
 #include <esp_wifi.h>
 #include <esp_camera.h>
@@ -14,6 +15,12 @@ struct WavFmt;
 #include <WiFiClient.h> 
 #include <SPI.h>        // <<< 改成 SPI
 using namespace websockets;
+
+// Exported functions for main.cpp
+extern "C" {
+  void aiglass_setup();
+  void aiglass_loop();
+}
 
 // ===== WiFi / Server =====
 const char* WIFI_SSID   = "aiglass";
@@ -266,7 +273,7 @@ void taskCamSend(void*) {
 // ====================================================================
 void init_i2s_in(){
   i2sIn.setPinsPdmRx(I2S_MIC_CLOCK_PIN, I2S_MIC_DATA_PIN);
-  if (!i2sIn.begin(I2S_MODE_PDM_RX, SAMPLE_RATE, I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_MONO)) {
+  if (!i2sIn.begin(I2S_MODE_PDM, SAMPLE_RATE, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_MONO)) {
     Serial.println("[I2S IN] init failed");
     while(1) { delay(1000); }
   }
@@ -314,7 +321,7 @@ void taskMicUpload(void*){
 // ====================================================================
 void init_i2s_out(){
   i2sOut.setPins(I2S_SPK_BCLK, I2S_SPK_LRCK, I2S_SPK_DIN);
-  if (!i2sOut.begin(I2S_MODE_STD, TTS_RATE, I2S_DATA_BIT_WIDTH_32BIT, I2S_SLOT_MODE_STEREO)) {
+  if (!i2sOut.begin(I2S_MODE_TX, TTS_RATE, I2S_BITS_PER_SAMPLE_32BIT, I2S_CHANNEL_STEREO)) {
     Serial.println("[I2S OUT] init failed");
     while(1){ delay(1000); }
   }
@@ -631,7 +638,7 @@ void taskHttpPlay(void*){
     static uint32_t current_out_rate = 0;
     if (current_out_rate != sampleRate) {
       // 重新配置I2S输出采样率以匹配服务端WAV
-      i2sOut.begin(I2S_MODE_STD, (int)sampleRate, I2S_DATA_BIT_WIDTH_32BIT, I2S_SLOT_MODE_STEREO);
+      i2sOut.begin(I2S_MODE_TX, (int)sampleRate, I2S_BITS_PER_SAMPLE_32BIT, I2S_CHANNEL_STEREO);
       current_out_rate = sampleRate;
       Serial.printf("[I2S OUT] reconfig to %u Hz\n", sampleRate);
     }
@@ -862,7 +869,7 @@ void taskImuLoop(void*){
 // ====================================================================
 // Setup / Loop
 // ====================================================================
-void setup() {
+void aiglass_setup() {
   Serial.begin(115200);
   delay(300);
 
@@ -991,7 +998,7 @@ void setup() {
   });
 }
 
-void loop() {
+void aiglass_loop() {
   if (!wsCam.available()) {
     if (wsCam.connect(SERVER_HOST, SERVER_PORT, CAM_WS_PATH)) {
       Serial.println("[WS-CAM] connected");

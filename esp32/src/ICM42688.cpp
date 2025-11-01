@@ -1,6 +1,10 @@
 // --- START OF ICM42688.cpp ---
 #include "ICM42688.h"
 
+#if defined(ESP32) || defined(ESP8266)
+#include <Wire.h>
+#endif
+
 ICM42688::ICM42688(TwoWire &bus, uint8_t address) {
   _bus = &bus;
   _address = address;

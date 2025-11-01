@@ -31,6 +31,7 @@ dependencies = [
     "dill>=0.3.7",
     "clip",
     "pyaudio>=0.2.14",
+    "platformio>=6.1.18",
 ]
 
 [project.optional-dependencies]

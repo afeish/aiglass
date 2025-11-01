@@ -77,3 +77,5 @@ mobileclip_*.ts
 
 # uv cache (not the lock file)
 *.uv-cache/
+components/
+.pio/

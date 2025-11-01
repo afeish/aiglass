@@ -141,7 +141,9 @@ uv sync
 ```bash
 # 安装系统依赖
 brew install portaudio
-
+brew install arduino-cli
+arduino-cli core update-index
+arduino-cli core install esp32:esp32
 # 然后安装依赖
 uv sync --extra audio
 ```

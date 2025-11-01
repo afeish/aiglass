@@ -1,3 +1,6 @@
+#ifndef CAMERA_PINS_H
+#define CAMERA_PINS_H
+
 #if defined(CAMERA_MODEL_XIAO_ESP32S3)
   #define PWDN_GPIO_NUM     -1
   #define RESET_GPIO_NUM    -1
@@ -58,3 +61,5 @@
 #else
   #error "Camera model not selected"
 #endif
+
+#endif // CAMERA_PINS_H
